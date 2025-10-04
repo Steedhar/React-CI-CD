@@ -63,18 +63,22 @@ stage('Quality Gate') {
     }
 }
 
-        stage('Snyk Scan') {
-            steps {
-                dir('my-react-app') {
-                    withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
-                        bat """
-                            echo %SNYK_TOKEN% | snyk auth --token
-                            snyk test
-                        """
-                    }
+stage('Snyk Scan') {
+    steps {
+        dir('my-react-app') {
+            withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+                // NodeJS environment wrapper
+                nodejs(nodeJSInstallationName: 'NodeJS') {
+                    // Use npx to avoid global PATH issues
+                    bat """
+                        echo %SNYK_TOKEN% | npx snyk auth --token
+                        npx snyk test
+                    """
                 }
             }
         }
+    }
+}
 
         stage('Docker Build & Push') {
             steps {
