@@ -67,10 +67,10 @@ stage('Snyk Scan') {
     steps {
         dir('my-react-app') {
             withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
-                // NodeJS environment wrapper
-                nodejs(nodeJSInstallationName: 'NodeJS') {
-                    // Use npx to avoid global PATH issues
+                script {
+                    def nodeHome = tool name: 'NodeJS', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
                     bat """
+                        set PATH=${nodeHome}\\bin;%PATH%
                         echo %SNYK_TOKEN% | npx snyk auth --token
                         npx snyk test
                     """
@@ -79,6 +79,7 @@ stage('Snyk Scan') {
         }
     }
 }
+
 
         stage('Docker Build & Push') {
             steps {
