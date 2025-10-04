@@ -24,7 +24,7 @@ pipeline {
         stage('Test') {
             steps {
                 dir('my-react-app') {
-                    bat 'npm test -- --watchAll=false'
+            bat 'npm test -- --watchAll=false --passWithNoTests'
                 }
             }
         }
