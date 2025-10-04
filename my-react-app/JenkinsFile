@@ -14,19 +14,19 @@ pipeline {
 
     stage('Install') {
       steps {
-        sh 'npm ci'
+        bat 'npm ci'
       }
     }
 
     stage('Test') {
       steps {
-        sh 'npm test -- --watchAll=false'
+        bat 'npm test -- --watchAll=false'
       }
     }
 
     stage('Build') {
       steps {
-        sh 'npm run build'
+        bat 'npm run build'
       }
     }
 
@@ -35,7 +35,7 @@ pipeline {
         // 'SonarQube' must be configured name under Manage Jenkins → SonarQube servers
            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
   withSonarQubeEnv('SonarQube') {
-    sh '''
+    bat '''
       sonar-scanner \
         -Dsonar.projectKey=${APP_NAME} \
         -Dsonar.sources=src \
@@ -58,7 +58,7 @@ pipeline {
     stage('Snyk Scan') {
       steps {
         withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
-          sh '''
+          bat '''
             echo $SNYK_TOKEN | snyk auth --token
             snyk test
           '''
@@ -69,7 +69,7 @@ pipeline {
     stage('Docker Build & Push') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          sh '''
+          bat '''
             SHORT_SHA=$(echo $GIT_COMMIT | cut -c1-7)
             IMAGE=${DOCKER_USER}/${APP_NAME}:${SHORT_SHA}
             docker build -t $IMAGE .
@@ -86,7 +86,7 @@ pipeline {
       steps {
         // ec2-ssh-key: add your deploy key ID in Jenkins credentials (SSH private key)
         sshagent (credentials: ['ssh-ec2-deploy']) {
-          sh '''
+          bat '''
             SHORT_SHA=$(echo $GIT_COMMIT | cut -c1-7)
             IMAGE=${DOCKER_USER}/${APP_NAME}:${SHORT_SHA}
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
