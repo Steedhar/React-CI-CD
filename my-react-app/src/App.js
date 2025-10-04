@@ -4,7 +4,7 @@ import './App.css';
 function App() {
   return (
     <div className="App">
-    <span>hi this our first cicd in react</span>
+    <span>hi this our first cicd in  node and react</span>
     </div>
   );
 }
