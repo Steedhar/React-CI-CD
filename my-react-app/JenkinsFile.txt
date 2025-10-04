@@ -1,0 +1,105 @@
+pipeline {
+  agent any
+  environment {
+    APP_NAME = "my-react-app"
+    DEPLOY_USER = "ubuntu"
+    DEPLOY_HOST = "ec2-X-X-X-X.compute-1.amazonaws.com"  // set in Jenkins credentials or environment
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Install') {
+      steps {
+        sh 'npm ci'
+      }
+    }
+
+    stage('Test') {
+      steps {
+        sh 'npm test -- --watchAll=false'
+      }
+    }
+
+    stage('Build') {
+      steps {
+        sh 'npm run build'
+      }
+    }
+
+    stage('SonarQube Analysis') {
+      steps {
+        // 'SonarQube' must be configured name under Manage Jenkins → SonarQube servers
+        withSonarQubeEnv('SonarQube') {
+          sh '''
+            # run sonar-scanner CLI (ensure sonar-scanner is installed on agent or in PATH)
+            sonar-scanner \
+              -Dsonar.projectKey=${APP_NAME} \
+              -Dsonar.sources=src \
+              -Dsonar.login=${SONAR_TOKEN}
+          '''
+        }
+      }
+    }
+
+    stage('Quality Gate') {
+      steps {
+        // will abort pipeline if Quality Gate is not OK
+        waitForQualityGate abortPipeline: true
+      }
+    }
+
+    stage('Snyk Scan') {
+      steps {
+        withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+          sh '''
+            echo $SNYK_TOKEN | snyk auth --token
+            snyk test
+          '''
+        }
+      }
+    }
+
+    stage('Docker Build & Push') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh '''
+            SHORT_SHA=$(echo $GIT_COMMIT | cut -c1-7)
+            IMAGE=${DOCKER_USER}/${APP_NAME}:${SHORT_SHA}
+            docker build -t $IMAGE .
+            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+            docker push $IMAGE
+            echo "IMAGE=$IMAGE" > image_info.txt
+          '''
+          archiveArtifacts artifacts: 'image_info.txt', fingerprint: true
+        }
+      }
+    }
+
+    stage('Deploy to EC2') {
+      steps {
+        // ec2-ssh-key: add your deploy key ID in Jenkins credentials (SSH private key)
+        sshagent (credentials: ['ssh-ec2-deploy']) {
+          sh '''
+            SHORT_SHA=$(echo $GIT_COMMIT | cut -c1-7)
+            IMAGE=${DOCKER_USER}/${APP_NAME}:${SHORT_SHA}
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
+              docker pull $IMAGE &&
+              docker stop ${APP_NAME} || true &&
+              docker rm ${APP_NAME} || true &&
+              docker run -d --name ${APP_NAME} -p 80:80 $IMAGE
+            "
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo "Pipeline succeeded — deployed." }
+    failure  { echo "Pipeline failed." }
+  }
+}
