@@ -1,108 +1,115 @@
 pipeline {
-  agent any
-  environment {
-    APP_NAME = "my-react-app"
-    DEPLOY_USER = "ubuntu"
-    DEPLOY_HOST = "ec2-3-109-3-206.ap-south-1.compute.amazonaws.com"  // set in Jenkins credentials or environment
-  }
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    agent any
+    environment {
+        APP_NAME = "my-react-app"
+        DEPLOY_USER = "ubuntu"
+        DEPLOY_HOST = "ec2-3-109-3-206.ap-south-1.compute.amazonaws.com"
     }
 
-    stage('Install') {
-      steps {
-        bat 'npm install'
-      }
-    }
-
-    stage('Test') {
-      steps {
-        bat 'npm test -- --watchAll=false'
-      }
-    }
-
-    stage('Build') {
-      steps {
-        bat 'npm run build'
-      }
-    }
-
-    stage('SonarQube Analysis') {
-      steps {
-        // 'SonarQube' must be configured name under Manage Jenkins → SonarQube servers
-           withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-  withSonarQubeEnv('SonarQube') {
-    bat '''
-      sonar-scanner \
-        -Dsonar.projectKey=${APP_NAME} \
-        -Dsonar.sources=src \
-        -Dsonar.login=${SONAR_TOKEN}
-    '''
-  }
-      }
-    }
-
-
-}
-
-    stage('Quality Gate') {
-      steps {
-        // will abort pipeline if Quality Gate is not OK
-        waitForQualityGate abortPipeline: true
-      }
-    }
-
-    stage('Snyk Scan') {
-      steps {
-        withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
-          bat '''
-            echo $SNYK_TOKEN | snyk auth --token
-            snyk test
-          '''
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-      }
-    }
 
-    stage('Docker Build & Push') {
-      steps {
-        withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          bat '''
-            SHORT_SHA=$(echo $GIT_COMMIT | cut -c1-7)
-            IMAGE=${DOCKER_USER}/${APP_NAME}:${SHORT_SHA}
-            docker build -t $IMAGE .
-            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-            docker push $IMAGE
-            echo "IMAGE=$IMAGE" > image_info.txt
-          '''
-          archiveArtifacts artifacts: 'image_info.txt', fingerprint: true
+        stage('Install') {
+            steps {
+                dir('my-react-app') {
+                    bat 'npm install'
+                }
+            }
         }
-      }
-    }
 
-    stage('Deploy to EC2') {
-      steps {
-        // ec2-ssh-key: add your deploy key ID in Jenkins credentials (SSH private key)
-        sshagent (credentials: ['ssh-ec2-deploy']) {
-          bat '''
-            SHORT_SHA=$(echo $GIT_COMMIT | cut -c1-7)
-            IMAGE=${DOCKER_USER}/${APP_NAME}:${SHORT_SHA}
-            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
-              docker pull $IMAGE &&
-              docker stop ${APP_NAME} || true &&
-              docker rm ${APP_NAME} || true &&
-              docker run -d --name ${APP_NAME} -p 80:80 $IMAGE
-            "
-          '''
+        stage('Test') {
+            steps {
+                dir('my-react-app') {
+                    bat 'npm test -- --watchAll=false'
+                }
+            }
         }
-      }
-    }
-  }
 
-  post {
-    success { echo "Pipeline succeeded — deployed." }
-    failure  { echo "Pipeline failed." }
-  }
+        stage('Build') {
+            steps {
+                dir('my-react-app') {
+                    bat 'npm run build'
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                dir('my-react-app') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        withSonarQubeEnv('SonarQube') {
+                            bat """
+                                sonar-scanner ^
+                                -Dsonar.projectKey=%APP_NAME% ^
+                                -Dsonar.sources=src ^
+                                -Dsonar.login=%SONAR_TOKEN%
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                waitForQualityGate abortPipeline: true
+            }
+        }
+
+        stage('Snyk Scan') {
+            steps {
+                dir('my-react-app') {
+                    withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+                        bat """
+                            echo %SNYK_TOKEN% | snyk auth --token
+                            snyk test
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                dir('my-react-app') {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        bat """
+                            for /f "tokens=1 delims=." %%a in ("%GIT_COMMIT%") do set SHORT_SHA=%%a
+                            set IMAGE=%DOCKER_USER%/%APP_NAME%:%SHORT_SHA%
+                            docker build -t %IMAGE% .
+                            echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
+                            docker push %IMAGE%
+                            echo IMAGE=%IMAGE% > image_info.txt
+                        """
+                        archiveArtifacts artifacts: 'image_info.txt', fingerprint: true
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ssh-ec2-deploy', keyFileVariable: 'KEY_FILE')]) {
+                    bat """
+                        for /f "tokens=1 delims=." %%a in ("%GIT_COMMIT%") do set SHORT_SHA=%%a
+                        set IMAGE=%DOCKER_USER%/%APP_NAME%:%SHORT_SHA%
+                        ssh -i %KEY_FILE% -o StrictHostKeyChecking=no %DEPLOY_USER%@%DEPLOY_HOST% ^
+                            "docker pull %IMAGE% && ^
+                             docker stop %APP_NAME% || true && ^
+                             docker rm %APP_NAME% || true && ^
+                             docker run -d --name %APP_NAME% -p 80:80 %IMAGE%"
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success { echo "Pipeline succeeded — deployed." }
+        failure { echo "Pipeline failed." }
+    }
 }
