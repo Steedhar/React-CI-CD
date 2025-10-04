@@ -41,14 +41,13 @@ pipeline {
             steps {
                 dir('my-react-app') {
                     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    
                         withSonarQubeEnv('SonarQube') {
-                            bat """
-                                sonar-scanner ^
-                                -Dsonar.projectKey=%APP_NAME% ^
-                                -Dsonar.sources=src ^
-                                -Dsonar.login=%SONAR_TOKEN%
-                            """
-                        }
+    bat "${tool 'SonarScanner'}\\bin\\sonar-scanner.bat ^
+        -Dsonar.projectKey=${APP_NAME} ^
+        -Dsonar.sources=src ^
+        -Dsonar.login=%SONAR_TOKEN%"
+}
                     }
                 }
             }
