@@ -54,12 +54,14 @@ pipeline {
             }
         }
 
-        stage('Quality Gate') {
-               script {
+stage('Quality Gate') {
+    steps {
+        script {
             // skip waiting if server URL is misconfigured
             echo "Skipping Quality Gate check"
         }
-        }
+    }
+}
 
         stage('Snyk Scan') {
             steps {
