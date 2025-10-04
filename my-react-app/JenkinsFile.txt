@@ -3,7 +3,7 @@ pipeline {
   environment {
     APP_NAME = "my-react-app"
     DEPLOY_USER = "ubuntu"
-    DEPLOY_HOST = "ec2-X-X-X-X.compute-1.amazonaws.com"  // set in Jenkins credentials or environment
+    DEPLOY_HOST = "ec2-3-109-3-206.ap-south-1.compute.amazonaws.com"  // set in Jenkins credentials or environment
   }
   stages {
     stage('Checkout') {
