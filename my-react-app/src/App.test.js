@@ -3,6 +3,6 @@ import App from './App';
 
 test('renders the welcome text', () => {
   render(<App />);
-  const textElement = screen.getByText(/hi this our first cicd in react/i);
+  const textElement = screen.getByText(/jskefhssdjkfhksdjhfsdkjfhekyuiwefhkewjfkwjefiwehkfjhwekjfhewkj/i);
   expect(textElement).toBeInTheDocument();
 });
